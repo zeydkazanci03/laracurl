@@ -1,0 +1,48 @@
+{
+    "name": "zeydkazanci03/laracurl",
+    "description": "Laravel için gelişmiş ve kullanımı kolay Curl paketi",
+    "type": "library",
+    "keywords": [
+        "laravel",
+        "curl",
+        "http",
+        "request",
+        "zeydkazanci03"
+    ],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Zeyd Kazancı",
+            "email": "zeydkazanci03@example.com"
+        }
+    ],
+    "require": {
+        "php": "^8.1",
+        "illuminate/support": "^10.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "ZeydKazanci03\\LaraCurl\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "ZeydKazanci03\\LaraCurl\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "ZeydKazanci03\\LaraCurl\\CurlServiceProvider"
+            ],
+            "aliases": {
+                "Curl": "ZeydKazanci03\\LaraCurl\\Facades\\Curl"
+            }
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
