@@ -13,6 +13,8 @@ class CurlManager
     protected $data = [];
     protected $options = [];
     protected $response;
+    protected $responseHeaders = [];
+    protected $responseBody;
     protected $info;
     protected $error;
     protected $errno;
@@ -48,7 +50,7 @@ class CurlManager
             CURLOPT_USERAGENT => $this->userAgent,
             CURLOPT_SSL_VERIFYPEER => $this->sslVerify,
             CURLOPT_SSL_VERIFYHOST => $this->sslVerify ? 2 : 0,
-            CURLOPT_HEADER => false,
+            CURLOPT_HEADER => true,
             CURLINFO_HEADER_OUT => true,
         ];
     }
@@ -70,13 +72,14 @@ class CurlManager
         if ($url) {
             $this->url($url);
         }
-        
+
         $this->method = 'GET';
-        
+
         if (!empty($data)) {
-            $this->url .= '?' . http_build_query($data);
+            $separator = strpos($this->url, '?') !== false ? '&' : '?';
+            $this->url .= $separator . http_build_query($data);
         }
-        
+
         return $this->execute();
     }
 
@@ -88,10 +91,15 @@ class CurlManager
         if ($url) {
             $this->url($url);
         }
-        
+
         $this->method = 'POST';
-        $this->data = $data;
-        
+
+        // Sadece parametre olarak data gelirse set et
+        // asJson() gibi metodlar zaten $this->data'yı set etmiştir
+        if (!empty($data)) {
+            $this->data = $data;
+        }
+
         return $this->execute();
     }
 
@@ -103,10 +111,13 @@ class CurlManager
         if ($url) {
             $this->url($url);
         }
-        
+
         $this->method = 'PUT';
-        $this->data = $data;
-        
+
+        if (!empty($data)) {
+            $this->data = $data;
+        }
+
         return $this->execute();
     }
 
@@ -118,10 +129,13 @@ class CurlManager
         if ($url) {
             $this->url($url);
         }
-        
+
         $this->method = 'PATCH';
-        $this->data = $data;
-        
+
+        if (!empty($data)) {
+            $this->data = $data;
+        }
+
         return $this->execute();
     }
 
@@ -133,10 +147,13 @@ class CurlManager
         if ($url) {
             $this->url($url);
         }
-        
+
         $this->method = 'DELETE';
-        $this->data = $data;
-        
+
+        if (!empty($data)) {
+            $this->data = $data;
+        }
+
         return $this->execute();
     }
 
@@ -148,10 +165,10 @@ class CurlManager
         if ($url) {
             $this->url($url);
         }
-        
+
         $this->method = 'HEAD';
         $this->options[CURLOPT_NOBODY] = true;
-        
+
         return $this->execute();
     }
 
@@ -163,9 +180,9 @@ class CurlManager
         if ($url) {
             $this->url($url);
         }
-        
+
         $this->method = 'OPTIONS';
-        
+
         return $this->execute();
     }
 
@@ -181,7 +198,7 @@ class CurlManager
         } else {
             $this->headers[] = "$key: $value";
         }
-        
+
         return $this;
     }
 
@@ -193,7 +210,7 @@ class CurlManager
         foreach ($headers as $key => $value) {
             $this->header($key, $value);
         }
-        
+
         return $this;
     }
 
@@ -215,7 +232,7 @@ class CurlManager
             'username' => $username,
             'password' => $password
         ];
-        
+
         return $this;
     }
 
@@ -229,7 +246,7 @@ class CurlManager
             'username' => $username,
             'password' => $password
         ];
-        
+
         return $this;
     }
 
@@ -240,7 +257,7 @@ class CurlManager
     {
         $this->timeout = $seconds;
         $this->options[CURLOPT_TIMEOUT] = $seconds;
-        
+
         return $this;
     }
 
@@ -250,7 +267,7 @@ class CurlManager
     public function connectTimeout($seconds)
     {
         $this->options[CURLOPT_CONNECTTIMEOUT] = $seconds;
-        
+
         return $this;
     }
 
@@ -261,7 +278,7 @@ class CurlManager
     {
         $this->userAgent = $userAgent;
         $this->options[CURLOPT_USERAGENT] = $userAgent;
-        
+
         return $this;
     }
 
@@ -271,7 +288,7 @@ class CurlManager
     public function referer($referer)
     {
         $this->options[CURLOPT_REFERER] = $referer;
-        
+
         return $this;
     }
 
@@ -283,7 +300,7 @@ class CurlManager
         $this->sslVerify = $verify;
         $this->options[CURLOPT_SSL_VERIFYPEER] = $verify;
         $this->options[CURLOPT_SSL_VERIFYHOST] = $verify ? 2 : 0;
-        
+
         return $this;
     }
 
@@ -296,7 +313,7 @@ class CurlManager
         $this->maxRedirects = $maxRedirects;
         $this->options[CURLOPT_FOLLOWLOCATION] = $follow;
         $this->options[CURLOPT_MAXREDIRS] = $maxRedirects;
-        
+
         return $this;
     }
 
@@ -306,7 +323,7 @@ class CurlManager
     public function cookie($name, $value)
     {
         $this->cookies[$name] = $value;
-        
+
         return $this;
     }
 
@@ -318,7 +335,7 @@ class CurlManager
         $this->cookieFile = $file;
         $this->options[CURLOPT_COOKIEFILE] = $file;
         $this->options[CURLOPT_COOKIEJAR] = $file;
-        
+
         return $this;
     }
 
@@ -329,45 +346,44 @@ class CurlManager
     {
         $this->proxy = $port ? "$proxy:$port" : $proxy;
         $this->options[CURLOPT_PROXY] = $this->proxy;
-        
+
         if ($username && $password) {
             $this->proxyAuth = "$username:$password";
             $this->options[CURLOPT_PROXYUSERPWD] = $this->proxyAuth;
         }
-        
+
         return $this;
     }
 
     /**
-     * JSON gönder
+     * JSON gönder (Request için)
      */
-    public function json($data)
+    public function asJson($data)
     {
         $this->data = $data;
         $this->header('Content-Type', 'application/json');
-        
+
         return $this;
     }
 
     /**
      * Form data gönder
      */
-    public function form($data)
+    public function asForm($data)
     {
         $this->data = $data;
         $this->header('Content-Type', 'application/x-www-form-urlencoded');
-        
+
         return $this;
     }
 
     /**
      * Multipart form data gönder
      */
-    public function multipart($data)
+    public function asMultipart($data)
     {
         $this->data = $data;
-        $this->header('Content-Type', 'multipart/form-data');
-        
+
         return $this;
     }
 
@@ -381,13 +397,13 @@ class CurlManager
         }
 
         $curlFile = curl_file_create($filePath, $mimeType, $postFilename);
-        
+
         if (!is_array($this->data)) {
             $this->data = [];
         }
-        
+
         $this->data[$fieldName] = $curlFile;
-        
+
         return $this;
     }
 
@@ -398,7 +414,7 @@ class CurlManager
     {
         $this->verbose = $verbose;
         $this->options[CURLOPT_VERBOSE] = $verbose;
-        
+
         return $this;
     }
 
@@ -408,7 +424,7 @@ class CurlManager
     public function setOption($option, $value)
     {
         $this->options[$option] = $value;
-        
+
         return $this;
     }
 
@@ -420,8 +436,25 @@ class CurlManager
         foreach ($options as $option => $value) {
             $this->options[$option] = $value;
         }
-        
+
         return $this;
+    }
+
+    /**
+     * Response object döndür
+     */
+    public function returnResponseObject()
+    {
+        $this->options['return_response_object'] = true;
+        return $this;
+    }
+
+    /**
+     * Response object döndür
+     */
+    public function returnResponseHeader()
+    {
+        return $this->responseHeaders;
     }
 
     /**
@@ -437,9 +470,6 @@ class CurlManager
         // URL'i ayarla
         curl_setopt($this->ch, CURLOPT_URL, $this->url);
 
-        // HTTP metodunu ayarla
-        curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, $this->method);
-
         // Authentication ayarla
         if ($this->authentication) {
             if ($this->authentication['type'] === 'basic') {
@@ -452,18 +482,43 @@ class CurlManager
         }
 
         // Data ayarla
+        $postData = null;
         if (!empty($this->data)) {
             $contentType = $this->getContentType();
-            
+
             if ($contentType === 'application/json') {
+                // JSON encode et
                 $postData = is_string($this->data) ? $this->data : json_encode($this->data);
+
+                // Content-Length otomatik ekle
+                if (!$this->hasHeader('Content-Length')) {
+                    $this->header('Content-Length', strlen($postData));
+                }
+
             } elseif ($contentType === 'application/x-www-form-urlencoded') {
+                // URL encode et
                 $postData = is_array($this->data) ? http_build_query($this->data) : $this->data;
+
+                // Content-Length otomatik ekle
+                if (!$this->hasHeader('Content-Length')) {
+                    $this->header('Content-Length', strlen($postData));
+                }
+
             } else {
+                // Multipart veya diğer
                 $postData = $this->data;
             }
-            
+
             curl_setopt($this->ch, CURLOPT_POSTFIELDS, $postData);
+        }
+
+        // HTTP metodunu ayarla
+        if ($this->method === 'POST') {
+            curl_setopt($this->ch, CURLOPT_POST, true);
+        } elseif ($this->method === 'GET') {
+            curl_setopt($this->ch, CURLOPT_HTTPGET, true);
+        } else {
+            curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, $this->method);
         }
 
         // Headers ayarla
@@ -482,7 +537,9 @@ class CurlManager
 
         // Tüm seçenekleri uygula
         foreach ($this->options as $option => $value) {
-            curl_setopt($this->ch, $option, $value);
+            if ($option !== 'return_response_object') {
+                curl_setopt($this->ch, $option, $value);
+            }
         }
 
         // İsteği çalıştır
@@ -491,7 +548,45 @@ class CurlManager
         $this->errno = curl_errno($this->ch);
         $this->error = curl_error($this->ch);
 
+        // Header ve body'yi ayır
+        $headerSize = $this->info['header_size'] ?? 0;
+        $headerString = substr($this->response, 0, $headerSize);
+        $this->responseBody = substr($this->response, $headerSize);
+
+        // Header'ları parse et
+        $this->parseHeaders($headerString);
+
+        // Response object istendiyse döndür
+        if (isset($this->options['return_response_object']) && $this->options['return_response_object']) {
+            return (object) [
+                'body' => $this->responseBody,
+                'headers' => $this->responseHeaders,
+                'status' => $this->status(),
+                'info' => $this->info,
+                'error' => $this->error,
+                'errno' => $this->errno
+            ];
+        }
+
         return $this;
+    }
+
+    /**
+     * Header'ları parse et
+     */
+    protected function parseHeaders($headerString)
+    {
+        $headers = [];
+        $lines = explode("\r\n", $headerString);
+
+        foreach ($lines as $line) {
+            if (strpos($line, ':') !== false) {
+                list($key, $value) = explode(':', $line, 2);
+                $headers[trim($key)] = trim($value);
+            }
+        }
+
+        $this->responseHeaders = $headers;
     }
 
     /**
@@ -508,19 +603,32 @@ class CurlManager
     }
 
     /**
+     * Belirli bir header var mı kontrol et
+     */
+    protected function hasHeader($headerName)
+    {
+        foreach ($this->headers as $header) {
+            if (stripos($header, $headerName . ':') === 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Response body'yi al
      */
     public function response()
     {
-        return $this->response;
+        return $this->responseBody ?? $this->response;
     }
 
     /**
-     * Response'u JSON olarak al
+     * Response'u JSON olarak al (Response için)
      */
     public function json()
     {
-        return json_decode($this->response, true);
+        return json_decode($this->responseBody ?? $this->response, true);
     }
 
     /**
@@ -528,7 +636,7 @@ class CurlManager
      */
     public function object()
     {
-        return json_decode($this->response);
+        return json_decode($this->responseBody ?? $this->response);
     }
 
     /**
@@ -604,22 +712,17 @@ class CurlManager
     /**
      * Response header'larını al
      */
-    public function headers()
+    public function getHeaders()
     {
-        $headerSize = $this->info('header_size');
-        $headerString = substr($this->response, 0, $headerSize);
-        
-        $headers = [];
-        $lines = explode("\r\n", $headerString);
-        
-        foreach ($lines as $line) {
-            if (strpos($line, ':') !== false) {
-                list($key, $value) = explode(':', $line, 2);
-                $headers[trim($key)] = trim($value);
-            }
-        }
-        
-        return $headers;
+        return $this->responseHeaders;
+    }
+
+    /**
+     * Belirli bir header değeri al
+     */
+    public function getHeader($key)
+    {
+        return $this->responseHeaders[$key] ?? null;
     }
 
     /**
@@ -627,7 +730,7 @@ class CurlManager
      */
     public function save($filePath)
     {
-        return file_put_contents($filePath, $this->response);
+        return file_put_contents($filePath, $this->responseBody ?? $this->response);
     }
 
     /**
@@ -642,9 +745,9 @@ class CurlManager
         header('Content-Description: File Transfer');
         header('Content-Type: application/octet-stream');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
-        header('Content-Length: ' . strlen($this->response));
-        
-        echo $this->response;
+        header('Content-Length: ' . strlen($this->responseBody ?? $this->response));
+
+        echo $this->responseBody ?? $this->response;
         exit;
     }
 
@@ -680,6 +783,6 @@ class CurlManager
      */
     public function __toString()
     {
-        return (string) $this->response;
+        return (string) ($this->responseBody ?? $this->response);
     }
 }
