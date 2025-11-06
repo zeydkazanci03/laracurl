@@ -3,6 +3,7 @@
 namespace ZeydKazanci03\LaraCurl;
 
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class CurlManager
 {
@@ -21,7 +22,7 @@ class CurlManager
     protected $timeout = 30;
     protected $followRedirects = true;
     protected $maxRedirects = 5;
-    protected $userAgent = 'LaraCurl/1.0';
+    protected $userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
     protected $cookies = [];
     protected $cookieFile;
     protected $proxy;
@@ -30,6 +31,8 @@ class CurlManager
     protected $sslVerify = true;
     protected $returnTransfer = true;
     protected $verbose = false;
+    protected $logAccountId = null; // Bot log için account_id
+    protected $logEnabled = false; // Log aktif mi?
 
     public function __construct()
     {
@@ -53,6 +56,16 @@ class CurlManager
             CURLOPT_HEADER => true,
             CURLINFO_HEADER_OUT => true,
         ];
+    }
+
+    /**
+     * Bot log aktif et
+     */
+    public function botLog($accountId)
+    {
+        $this->logAccountId = $accountId;
+        $this->logEnabled = true;
+        return $this;
     }
 
     /**
@@ -458,6 +471,66 @@ class CurlManager
     }
 
     /**
+     * Request data'yı al (log için)
+     */
+    protected function getRequestData()
+    {
+        // GET isteği için URL'deki query parametrelerini al
+        if ($this->method === 'GET') {
+            $parsedUrl = parse_url($this->url);
+            if (isset($parsedUrl['query'])) {
+                parse_str($parsedUrl['query'], $queryParams);
+                return $queryParams;
+            }
+            return [];
+        }
+
+        // POST, PUT, PATCH, DELETE için data'yı al
+        return $this->data;
+    }
+
+    /**
+     * IP adresini al
+     */
+    protected function ipAddress()
+    {
+        foreach (['HTTP_CLIENT_IP', 'HTTP_X_FORWARDED_FOR', 'HTTP_X_FORWARDED', 'HTTP_X_CLUSTER_CLIENT_IP', 'HTTP_FORWARDED_FOR', 'HTTP_FORWARDED', 'REMOTE_ADDR'] as $key) {
+            if (array_key_exists($key, $_SERVER) === true) {
+                foreach (explode(',', $_SERVER[$key]) as $ip) {
+                    $ip = trim($ip);
+                    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false) {
+                        return $ip;
+                    }
+                }
+            }
+        }
+        return $_SERVER['REMOTE_ADDR'] ?? null;
+    }
+
+    /**
+     * Log'u veritabanına kaydet
+     */
+    protected function saveBotLog()
+    {
+        if (!$this->logEnabled || !$this->logAccountId) {
+            return;
+        }
+
+        try {
+            DB::table('betco_account_log')->insert([
+                'account_id' => $this->logAccountId,
+                'endpoint' => $this->url,
+                'request_data' => json_encode($this->getRequestData(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'response_data' => $this->responseBody ?? $this->response,
+                'ip_address' => $this->ipAddress(),
+                'port' => $_SERVER['REMOTE_PORT'] ?? null
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Bot log kaydedilemedi: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * İsteği çalıştır
      */
     protected function execute()
@@ -555,6 +628,9 @@ class CurlManager
 
         // Header'ları parse et
         $this->parseHeaders($headerString);
+
+        // Bot log kaydet
+        $this->saveBotLog();
 
         // Response object istendiyse döndür
         if (isset($this->options['return_response_object']) && $this->options['return_response_object']) {
